@@ -259,6 +259,10 @@ const PROBLEMS = [
 const START        = "2026-05-22";
 const SR_OFFSETS   = [1, 3, 7, 14, 30];
 const SR_LABELS    = ["Next Day", "+3 Days", "+1 Week", "+2 Weeks", "+1 Month"];
+// Gaps between consecutive reviews (used to compute adaptive next-due)
+const SR_GAPS      = [2, 4, 7, 16]; // days after review i until review i+1 (base)
+const EASE_MULT    = { hard: 0.5, ok: 1, easy: 2 };
+const EASE_COLOR   = { hard: "#ef4444", ok: "#fbbf24", easy: "#22c55e" };
 const CATEGORIES   = [...new Set(PROBLEMS.map(p => p.c))];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -412,9 +416,17 @@ export default function NeetCode250() {
     setFlash(id); setTimeout(() => setFlash(null), 700);
   };
 
-  const markSR = async (id, i) => {
+  const markSR = async (id, i, ease) => {
     const prob = db.p[id];
-    const rev  = prob.rev.map((r,j) => j===i ? {...r, done: localToday()} : r);
+    const td   = localToday();
+    const rev  = prob.rev.map((r, j) => {
+      if (j === i) return { ...r, done: td, ease };
+      if (j === i + 1 && SR_GAPS[i] !== undefined) {
+        const gap = Math.max(1, Math.round(SR_GAPS[i] * EASE_MULT[ease]));
+        return { ...r, due: addDays(td, gap) };
+      }
+      return r;
+    });
     await persist({ ...db, p: { ...db.p, [id]: { ...prob, rev } } });
     setFlash(id); setTimeout(() => setFlash(null), 700);
   };
@@ -537,7 +549,20 @@ export default function NeetCode250() {
           </div>
           <div style={{ display:"flex", gap:5, alignItems:"center", flexShrink:0 }}>
             {!isDone && type==="new"    && <button onClick={() => markLearn(prob.id)} style={{ background:"#14532d", color:"#4ade80", border:"1px solid #166534", borderRadius:7, padding:"5px 11px", cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit" }}>✓ Done</button>}
-            {!isDone && type==="sr"     && <button onClick={() => markSR(prob.id, idx)} style={{ background:"#0c1f4a", color:"#93c5fd", border:"1px solid #1e3a8a", borderRadius:7, padding:"5px 11px", cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit" }}>✓ Revised</button>}
+            {!isDone && type==="sr" && (
+              <>
+                {[["hard","🔴","#3a0a0a","#ef4444","#7f1d1d"],
+                  ["ok",  "🟡","#2a1f00","#fbbf24","#78350f"],
+                  ["easy","🟢","#052010","#4ade80","#14532d"]].map(([ease,ico,bg,fg,bd]) => (
+                  <button key={ease} onClick={() => markSR(prob.id, idx, ease)}
+                    style={{ background:bg, color:fg, border:`1px solid ${bd}`,
+                      borderRadius:7, padding:"5px 9px", cursor:"pointer",
+                      fontSize:11, fontWeight:700, fontFamily:"inherit" }}>
+                    {ico} {ease.charAt(0).toUpperCase()+ease.slice(1)}
+                  </button>
+                ))}
+              </>
+            )}
             {!isDone && type==="random" && <button onClick={() => markRand(prob.id)} style={{ background:"#062020", color:"#5eead4", border:"1px solid #0e4040", borderRadius:7, padding:"5px 11px", cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit" }}>✓ Revised</button>}
             <a href={prob.lc} target="_blank" rel="noopener noreferrer"
                style={{ color:T.muted, border:`1px solid ${T.border}`, borderRadius:7,
@@ -547,9 +572,9 @@ export default function NeetCode250() {
         {pData && (
           <div style={{ display:"flex", gap:3, marginTop:7 }}>
             {pData.rev.map((r,i) => (
-              <div key={i} title={SR_LABELS[i]+(r.done?" ✓":" due "+r.due)}
-                style={{ flex:1, height:2, borderRadius:1,
-                  background: r.done?"#22c55e": r.due<=td?"#fbbf24":T.border }} />
+              <div key={i} title={SR_LABELS[i]+(r.done ? ` ✓ (${r.ease||"ok"})` : " due "+r.due)}
+                style={{ flex:1, height:3, borderRadius:1,
+                  background: r.done ? (EASE_COLOR[r.ease]||"#22c55e") : r.due<=td ? "#fbbf24" : T.border }} />
             ))}
           </div>
         )}
@@ -779,9 +804,9 @@ export default function NeetCode250() {
                       {pData && (
                         <div style={{ display:"flex", gap:3, marginTop:5 }}>
                           {pData.rev.map((r,i) => (
-                            <div key={i} title={SR_LABELS[i]+(r.done?" ✓":" due "+r.due)}
-                              style={{ flex:1, height:2, borderRadius:1,
-                                background:r.done?"#22c55e":r.due<=td?"#fbbf24":T.border }} />
+                            <div key={i} title={SR_LABELS[i]+(r.done ? ` ✓ (${r.ease||"ok"})` : " due "+r.due)}
+                              style={{ flex:1, height:3, borderRadius:1,
+                                background:r.done?(EASE_COLOR[r.ease]||"#22c55e"):r.due<=td?"#fbbf24":T.border }} />
                           ))}
                         </div>
                       )}
